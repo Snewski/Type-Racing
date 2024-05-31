@@ -1,0 +1,200 @@
+---
+title: "Behavioural"
+author: "P.H.W"
+date: "2024-04-13"
+output: html_document
+---
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+```
+
+
+```{r, data-grouping}
+# Loading data
+d <- read.csv("group13_a.csv")
+
+# All manipulated trials
+#manipulated <- d %>%
+#  filter(condition != "control")
+# All corrected Errors 
+corrected <- d %>% 
+  filter(condition=="error rectified")
+# All inserted Errors 
+inserted <- d %>% 
+  filter(condition=="error inserted")
+# All genuine Errors
+errors <- d %>% 
+  filter(feedback=="negative" & condition=="control")
+# Normal trial 
+normal <- d %>% 
+  filter(feedback=="positive" & condition=="control")
+
+```
+
+```{r, filtering}
+
+# Filtering data for trials preceding a genuine error, the genuine error trial, and the two trials after the genuine error
+error_trials <- data.frame(errors$trial, errors$block)
+selected_trials <- data.frame(c(errors$trial - 1, errors$trial, errors$trial + 1, errors$trial + 2), errors$block)
+names(selected_trials)[1] <- "trial"
+names(selected_trials)[2] <- "block"
+# Join with the original data to get complete information for selected trials
+selected_data_e <- selected_trials %>%
+  left_join(d, by = c("trial", "block"))
+
+# Filtering the same data for trials related to inserted trials 
+inserted_trials <- data.frame(inserted$trial, inserted$block)
+selected_trials_i <- data.frame(c(inserted$trial - 1, inserted$trial, inserted$trial + 1, inserted$trial + 2), inserted$block)
+names(selected_trials_i)[1] <- "trial"
+names(selected_trials_i)[2] <- "block"
+# Join with the original data to get complete information for selected trials
+selected_data_i <- selected_trials_i %>%
+  left_join(d, by = c("trial", "block"))
+
+# Filtering the same data for trials related to correctd trials 
+corrected_trials <- data.frame(corrected$trial, corrected$block)
+selected_trials_c <- data.frame(c(corrected$trial - 1, corrected$trial, corrected$trial + 1, corrected$trial + 2), corrected$block)
+names(selected_trials_c)[1] <- "trial"
+names(selected_trials_c)[2] <- "block"
+# Join with the original data to get complete information for selected trials
+selected_data_c <- selected_trials_c %>%
+  left_join(d, by = c("trial", "block"))
+
+
+```
+
+
+```{r, iki}
+# Group error-data by trial type (preceding, error, after 1, after 2) and calculate mean IKI per letter, and it's standard error.
+mean_iki_e <- selected_data_e %>%
+  group_by(trial_type = case_when(
+    trial == errors$trial - 1 & block == errors$block ~ "E-1",
+    trial == errors$trial & block == errors$block ~ "Error",
+    trial == errors$trial + 1 & block == errors$block ~ "E+1",
+    trial == errors$trial + 2 & block == errors$block ~ "E+2"
+  )) %>%
+  summarise(mean_iki = mean(response_time)*1000, std_error = sd(response_time)*1000/sqrt(length(response_time)))
+# Ordering the levels properly
+mean_iki_e$trial_type <- factor(mean_iki_e$trial_type, levels = c("E-1", "Error", "E+1", "E+2"))
+
+# Group inserted-data by trial type (preceding, error, after 1, after 2) and calculate mean IKI per letter, and it's standard error.
+mean_iki_i <- selected_data_i %>%
+  group_by(trial_type = case_when(
+    trial == inserted$trial - 1 & block == inserted$block ~ "E-1",
+    trial == inserted$trial & block == inserted$block ~ "Error",
+    trial == inserted$trial + 1 & block == inserted$block ~ "E+1",
+    trial == inserted$trial + 2 & block == inserted$block ~ "E+2"
+  )) %>%
+  summarise(mean_iki = mean(response_time)*1000, std_error = sd(response_time)*1000/sqrt(length(response_time)))
+# Ordering the levels properly
+mean_iki_i$trial_type <- factor(mean_iki_i$trial_type, levels = c("E-1", "Error", "E+1", "E+2"))
+
+# Group corrected-data by trial type (preceding, error, after 1, after 2) and calculate mean IKI per letter, and it's standard error.
+mean_iki_c <- selected_data_c %>%
+  group_by(trial_type = case_when(
+    trial == corrected$trial - 1 & block == corrected$block ~ "E-1",
+    trial == corrected$trial & block == corrected$block ~ "Error",
+    trial == corrected$trial + 1 & block == corrected$block ~ "E+1",
+    trial == corrected$trial + 2 & block == corrected$block ~ "E+2"
+  )) %>%
+  summarise(mean_iki = mean(response_time)*1000, std_error = sd(response_time)*1000/sqrt(length(response_time)))
+# Ordering the levels properly
+mean_iki_c$trial_type <- factor(mean_iki_c$trial_type, levels = c("E-1", "Error", "E+1", "E+2"))
+
+
+# Combining into one dataset
+combined_mean_iki <- bind_rows(mutate(mean_iki_e, group = "Genuine Errors"), 
+                               mutate(mean_iki_i, group = "Inserted Errors"),
+                               mutate(mean_iki_c, group = "Corrected Errors"))
+
+
+```
+
+
+```{r, plot}
+# Calculating the average response time for correct trials.
+Correct <- mean(normal$response_time)*1000
+
+# Plot the mean IKI per letter for each trial type, coded by group.
+ggplot(combined_mean_iki, aes(x = trial_type, y = mean_iki, shape = group, group = group)) +
+  geom_point() +
+  geom_line(linetype = "dashed") +
+  geom_errorbar(aes(ymin = mean_iki - 1.96 * std_error, ymax = mean_iki + 1.96 * std_error), width = 0.2) +
+  geom_hline(aes(yintercept = Correct, linetype = "Correct"), color = "red") +
+  labs(title = "Mean Interkeystroke Interval per Letter for Different Trial Types",
+       x = "",
+       y = "Mean Interkeystroke Interval (milliseconds per letter)",
+       color = "Group") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#ggsave('post_error.png')
+
+```
+
+
+```{r, analysis}
+
+# Filtering data for trials the genuine error trial, and the trial after the genuine error.
+error_trials <- data.frame(errors$trial, errors$block)
+selected_trials_e <- data.frame(c(errors$trial, errors$trial + 1), errors$block)
+names(selected_trials_e)[1] <- "trial"
+names(selected_trials_e)[2] <- "block"
+# Join with the original data to get complete information for selected trials
+selected_data_e <- selected_trials_e %>%
+  left_join(d, by = c("trial", "block"))
+# Create a new column 'category' based on row numbers
+selected_data_e <- selected_data_e %>% 
+  mutate(category = ifelse(row_number() <= 413, "Error", "E+1"))
+
+
+# Filtering data for the same trials related to inserted errors 
+inserted_trials <- data.frame(inserted$trial, inserted$block)
+selected_trials_i <- data.frame(c(inserted$trial, inserted$trial + 1), inserted$block)
+names(selected_trials_i)[1] <- "trial"
+names(selected_trials_i)[2] <- "block"
+# Join with the original data to get complete information for selected trials
+selected_data_i <- selected_trials_i %>%
+  left_join(d, by = c("trial", "block"))
+# Create a new column 'category' based on row numbers
+selected_data_i <- selected_data_i %>% 
+  mutate(category = ifelse(row_number() <= 58, "Error", "E+1"))
+
+
+# Filtering data for the same trials related to corrected errors 
+corrected_trials <- data.frame(corrected$trial, corrected$block)
+selected_trials_c <- data.frame(c(corrected$trial, corrected$trial + 1), corrected$block)
+names(selected_trials_c)[1] <- "trial"
+names(selected_trials_c)[2] <- "block"
+# Join with the original data to get complete information for selected trials
+selected_data_c <- selected_trials_c %>%
+  left_join(d, by = c("trial", "block"))
+# Create a new column 'category' based on row numbers
+selected_data_c <- selected_data_c %>% 
+  mutate(category = ifelse(row_number() <= 48, "Error", "E+1"))
+
+
+# performing Wilcoxon Rank Sum Test (equivalent to Mann-Whitney U)
+wilcox.test(response_time ~ category, data = selected_data_e, exact=FALSE)
+wilcox.test(response_time ~ category, data = selected_data_i, exact=FALSE)
+wilcox.test(response_time ~ category, data = selected_data_c, exact=FALSE)
+
+
+```
+
+
+```{r, stats}
+
+# WPM
+length(d$trial)/(sum(d$response_time)/60)/5
+
+# Accuracy
+(length(normal$trial) + length(corrected$trial))/length(d$trial)*100
+
+
+```
+
